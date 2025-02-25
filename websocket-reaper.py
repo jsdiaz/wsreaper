@@ -20,7 +20,7 @@ def fetch_webpage_data(url):
             with open("server-status-multiple-old") as f:
                 soup = BeautifulSoup(f.read(), 'html.parser')
         else:
-        response = requests.get(url)
+            response = requests.get(url)
         if response.status_code != 200:
             raise ConnectionError(f"Unexpected HTTP response code: {response.status_code}")
         soup = BeautifulSoup(response.text, 'html.parser')
