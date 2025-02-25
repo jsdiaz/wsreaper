@@ -8,11 +8,15 @@ import requests
 import re
 import subprocess
 
-# Configure Logging
-# log to console
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-# also log to syslog
-logging.getLogger().addHandler(logging.handlers.SysLogHandler())
+# Configure Logging                                                                                                                 
+# log to console                                                                                                                    
+logging.basicConfig(level=logging.DEBUG, format='Apache WSReaper: %(asctime)s - %(levelname)s - %(message)s')
+# also log to syslog                                                                                                                
+syslog_handler = logging.handlers.SysLogHandler(address='/dev/log')
+syslog_handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('Apache WSReaper: %(levelname)s - %(message)s')
+syslog_handler.setFormatter(formatter)
+logging.getLogger().addHandler(syslog_handler)
 
 # Define TESTING variable
 TESTING = os.getenv('TESTING', 'False').lower() in ('true', '1', 't')
