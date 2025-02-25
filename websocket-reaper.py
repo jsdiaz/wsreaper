@@ -98,9 +98,14 @@ def main():
                     logging.debug(f"Successfully terminated stale connections to PID {serverPID}")
                 else:
                     logging.error(f"Failed to terminate stale connections to PID {serverPID}")
-                
+            except ValueError as e:
+                logging.error(f"Value error while processing PID {serverPID}: {str(e)}")
+            except ProcessLookupError as e:
+                logging.error(f"Process lookup error while processing PID {serverPID}: {str(e)}")
+            except subprocess.CalledProcessError as e:
+                logging.error(f"Subprocess error while processing PID {serverPID}: {str(e)}")
             except Exception as e:
-                logging.error(f"Failed to terminate stale connections to PID {serverPID}")
+                logging.error(f"Unexpected error while processing PID {serverPID}: {str(e)}")
                 
     except ValueError as e:
         logging.debug(f"{e}: exiting")
