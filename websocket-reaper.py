@@ -11,6 +11,8 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %
 def fetch_webpage_data(url):
     try:
         response = requests.get(url)
+        if response.status_code != 200:
+            raise ConnectionError(f"Unexpected HTTP response code: {response.status_code}")
         soup = BeautifulSoup(response.text, 'html.parser')
 # for testing with captured output
 #        with open("server-status-multiple-old") as f:
