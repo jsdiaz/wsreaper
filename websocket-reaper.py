@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
-import logging
+import logging, logging.handlers
 from bs4 import BeautifulSoup
+import os
 import psutil
 import requests
 import re
@@ -23,9 +24,9 @@ def fetch_webpage_data(url):
                 soup = BeautifulSoup(f.read(), 'html.parser')
         else:
             response = requests.get(url)
-        if response.status_code != 200:
-            raise ConnectionError(f"Unexpected HTTP response code: {response.status_code}")
-        soup = BeautifulSoup(response.text, 'html.parser')
+            if response.status_code != 200:
+                raise ConnectionError(f"Unexpected HTTP response code: {response.status_code}")
+            soup = BeautifulSoup(response.text, 'html.parser')
     
         # Find all td elements containing 'yes (old gen)'
         serverPIDs = []
