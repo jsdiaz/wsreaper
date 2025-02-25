@@ -11,27 +11,32 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %
 # also log to syslog
 logging.getLogger().addHandler(logging.handlers.SysLogHandler())
 
+# Define TESTING variable
+TESTING = os.getenv('TESTING', 'False').lower() in ('true', '1', 't')
+
 def fetch_webpage_data(url):
     try:
+        if TESTING:
+            with open("server-status-multiple-old") as f:
+                soup = BeautifulSoup(f.read(), 'html.parser')
+        else:
         response = requests.get(url)
         if response.status_code != 200:
             raise ConnectionError(f"Unexpected HTTP response code: {response.status_code}")
         soup = BeautifulSoup(response.text, 'html.parser')
-# for testing with captured output
-#        with open("server-status-multiple-old") as f:
-#            soup = BeautifulSoup(f.read(), 'html.parser')
-
+    
         # Find all td elements containing 'yes (old gen)'
         serverPIDs = []
         for td in soup.find_all("td", text="yes (old gen)"):
-            prev_sibling = td.find_previous_sibling('td')
-            for txt in prev_sibling.stripped_strings:
-                serverPIDs.append(int(txt))
+            serverPIDs.append(int(td.find_previous_sibling('td').get_text(strip=True)))
                 
         return serverPIDs
     
     except ConnectionError as e:
         logging.error(f"Failed to fetch webpage data: {str(e)}")
+        return None
+    except Exception as e:
+        logging.error(f"An error occured while parsing webpage data: {str(e)}")
         return None
 
 def process_connection(serverPID):
