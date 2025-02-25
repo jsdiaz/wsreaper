@@ -6,7 +6,10 @@ import re
 import subprocess
 
 # Configure Logging
+# log to console
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+# also log to syslog
+logging.getLogger().addHandler(logging.handlers.SysLogHandler())
 
 def fetch_webpage_data(url):
     try:
@@ -76,10 +79,10 @@ def main():
 
     try:
         data = fetch_webpage_data(url)
-        if data:
-            logging.debug(f"Found matching PIDS: {data}")
         if not data:
             raise ValueError("No matching PIDs found")
+
+        logging.debug(f"Found matching PIDS: {data}")
         
         for serverPID in data:
             # Assuming matches are captured as process IDs
@@ -87,6 +90,8 @@ def main():
                 ssResult = process_connection(serverPID)
                 if ssResult:
                     logging.debug(f"Successfully terminated stale connections to PID {serverPID}")
+                else:
+                    logging.error(f"Failed to terminate stale connections to PID {serverPID}")
                 
             except Exception as e:
                 logging.error(f"Failed to terminate stale connections to PID {serverPID}")
