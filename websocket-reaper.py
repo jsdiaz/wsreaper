@@ -45,13 +45,13 @@ def process_connection(serverPID):
         if not isinstance(serverPID, int) or serverPID <= 0:
             raise ValueError("Invalid Process ID")
 
-        if psutil.pid_exists(serverPID):
-            logging.debug(f"a process with pid {serverPID} exists")
-        else:
+        if not psutil.pid_exists(serverPID):
             raise ProcessLookupError(f"a process with pid {serverPID} does not exist")
 
+        logging.debug(f"a process with pid {serverPID} exists")
+
         p = psutil.Process(serverPID)
-        for connection in p.connections():
+        for connection in p.net_connections():
             if connection.status == psutil.CONN_ESTABLISHED and connection.laddr.port == 443:
                 remote_addr = f'[{connection.raddr.ip}]:{connection.raddr.port}'
                 # call ss
@@ -63,10 +63,11 @@ def process_connection(serverPID):
                         text=True
                     )
                     logging.debug(f"ss terminated connection to {remote_addr}")
-        
+                except subprocess.CalledProcessError as e:
+                    logging.error(f"ss failed to terminate connection to {remote_addr}")     
                 except Exception as e:
-                    logging.error(f"ss failed to terminate connection to {remote_addr}")
-                    
+                    logging.error(f"Unexpected error while terminating connection to {remote_addr}: {str(e)}")
+
         return True
         
     except ValueError as e:
