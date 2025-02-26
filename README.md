@@ -30,18 +30,22 @@ The script fetches the server-status page, parses it to find Apache servers that
 
 In order for the script to be able to kill established connections, it will need elevated privileges, eg as root. Anything that you download and run with elevated privs on your machine should be throughly inspected. Please inspect this code prior to running it with elevated privs.
 
+
 * This script should be run as root.
 * Run the script in test mode (-t) and inspect output.
 * Set up the script to run at the desired interval in cron.
 
+
 * Usage
 ./websocket-reaper.py -u <url> [-k] [-t] [-v]
 
-Options:
--u, --url <url>       URL of the server-status page
--k, --kill            Run in kill mode
--t, --testing         Run in testing mode (implies -v)
--v, --verbose         Be verbose
+
+* Options
+-u, --url <url>       URL of the server-status page  
+-k, --kill            Run in kill mode  
+-t, --testing         Run in testing mode (implies -v)  
+-v, --verbose         Be verbose  
+
 
 * Example
 ```
