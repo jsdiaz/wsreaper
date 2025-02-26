@@ -7,6 +7,7 @@ import psutil
 import requests
 import re
 import subprocess
+import argparse
 
 # Configure Logging
 formatter = logging.Formatter('Apache WSReaper: %(asctime)s - %(levelname)s - %(message)s')
@@ -20,26 +21,60 @@ syslog_handler = logging.handlers.SysLogHandler(address='/dev/log')
 syslog_handler.setFormatter(formatter)
 
 # Configure root logger
-logging.basicConfig(level=logging.DEBUG, handlers=[console_handler, syslog_handler])
+logging.basicConfig(level=logging.WARN, handlers=[console_handler, syslog_handler])
+
+# Parse command line arguments
+parser = argparse.ArgumentParser(description='WebSocket Reaper')
+group = parser.add_mutually_exclusive_group()
+group.add_argument('-k', '--kill', action='store_true', help='Run in kill mode')
+group.add_argument('-t', '--testing', action='store_true', help='Run in testing mode')
+# add required argument url
+parser.add_argument('-u', '--url', type=str, required=True, help='URL of the server-status page')
+parser.add_argument('-v', '--verbose', action='store_true', help='Be verbose')
+args = parser.parse_args()
 
 # Define TESTING variable
-TESTING = os.getenv('TESTING', 'False').lower() in ('true', '1', 't')
+TESTMODE = args.testing
+KILLMODE = args.kill
+VERBOSE = args.verbose
+STATUSURL = args.url
+TESTING = False
+if TESTMODE:
+    TESTING = True
+    VERBOSE = True
+    logging.debug("Running in TESTING mode")
+if KILLMODE:
+    KILLPROCESS = True
+    logging.debug("Running in KILL mode")
+if VERBOSE:
+    logging.getLogger().setLevel(logging.DEBUG)
+    logging.debug("Running in VERBOSE mode")
 
 def fetch_webpage_data(url):
+    serverPIDs = []
+
     try:
         if TESTING:
-            with open("server-status-multiple-old") as f:
-                soup = BeautifulSoup(f.read(), 'html.parser')
+            logging.debug("Getting a two first apache2 pids for testing")
+            processList = []
+            for process in psutil.process_iter(['pid', 'name']):
+                if process.info['name'] == 'apache2':
+                    print(f"Process ID: {process.info['pid']}")
+                    processList.append(process.info['pid'])
+            # get last two pids
+            serverPIDs = processList[-2:]
+
         else:
-            response = requests.get(url)
+            requests.packages.urllib3.disable_warnings(requests.packages.urllib3.exceptions.InsecureRequestWarning)
+            response = requests.get(url, verify=False)
             if response.status_code != 200:
                 raise ConnectionError(f"Unexpected HTTP response code: {response.status_code}")
             soup = BeautifulSoup(response.text, 'html.parser')
     
-        # Find all td elements containing 'yes (old gen)'
-        serverPIDs = []
-        for td in soup.find_all("td", text="yes (old gen)"):
-            serverPIDs.append(int(td.find_previous_sibling('td').get_text(strip=True)))
+            # Find all td elements containing 'yes (old gen)'
+            logging.debug("Parsing server-status page and getting apache pids that are exiting")
+            for td in soup.find_all("td", text="yes (old gen)"):
+                serverPIDs.append(int(td.find_previous_sibling('td').get_text(strip=True)))
                 
         return serverPIDs
     
@@ -62,22 +97,30 @@ def process_connection(serverPID):
         logging.debug(f"a process with pid {serverPID} exists")
 
         p = psutil.Process(serverPID)
-        for connection in p.net_connections():
+        for connection in p.connections():
             if connection.status == psutil.CONN_ESTABLISHED and connection.laddr.port == 443:
                 remote_addr = f'[{connection.raddr.ip}]:{connection.raddr.port}'
-                # call ss
-                try:
-                    ss_output = subprocess.run(
-                        ['/usr/bin/ss', '-na', 'dst', remote_addr],
-                        capture_output=True, 
-                        check=True,
-                        text=True
-                    )
-                    logging.debug(f"ss terminated connection to {remote_addr}")
-                except subprocess.CalledProcessError as e:
-                    logging.error(f"ss failed to terminate connection to {remote_addr}")     
-                except Exception as e:
-                    logging.error(f"Unexpected error while terminating connection to {remote_addr}: {str(e)}")
+
+                if KILLMODE:
+                    logging.debug(f"Terminating connection to {remote_addr}")
+                    # kill the network connections via ss
+                    try:
+                        ss_output = subprocess.run(
+                            ['/usr/bin/ss', '-K', 'dst', remote_addr],
+                            capture_output=True, 
+                            check=True,
+                            text=True
+                        )
+                        logging.debug(f"ss terminated connection to {remote_addr}")
+                    except subprocess.CalledProcessError as e:
+                        logging.error(f"ss failed to terminate connection to {remote_addr}")     
+                    except Exception as e:
+                        logging.error(f"Unexpected error while terminating connection to {remote_addr}: {str(e)}")
+                else:
+                    logging.debug(f"Would terminate connection to {remote_addr}")
+            else:
+                logging.debug(f"PID {serverPID} has no ESTABLISHED connections on port 443")
+                return False
 
         return True
         
@@ -92,10 +135,8 @@ def process_connection(serverPID):
         return False
 
 def main():
-    url = 'http://localhost/server-status'
-
     try:
-        data = fetch_webpage_data(url)
+        data = fetch_webpage_data(STATUSURL)
         if not data:
             raise ValueError("No matching PIDs found")
 
@@ -105,9 +146,9 @@ def main():
             # Assuming matches are captured as process IDs
             try:
                 ssResult = process_connection(serverPID)
-                if ssResult:
+                if ssResult and KILLMODE:
                     logging.debug(f"Successfully terminated stale connections to PID {serverPID}")
-                else:
+                elif KILLMODE:
                     logging.error(f"Failed to terminate stale connections to PID {serverPID}")
             except ValueError as e:
                 logging.error(f"Value error while processing PID {serverPID}: {str(e)}")
