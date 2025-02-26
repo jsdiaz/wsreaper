@@ -76,7 +76,6 @@ def fetch_webpage_data(url):
             processList = []
             for process in psutil.process_iter(['pid', 'name']):
                 if process.info['name'] == 'apache2':
-                    print(f"Process ID: {process.info['pid']}")
                     processList.append(process.info['pid'])
             # get last two pids
             serverPIDs = processList[-2:]
