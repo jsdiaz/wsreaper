@@ -2,18 +2,19 @@
 
 ## websocket-reaper.py
 ## Author: J S Diaz
-## Version: 1.0
+## Version: 0.2
 ## Date: 2025-02-26
 ## Description: This script is designed to kill stale WebSocket connections on an Apache server. The script fetches the server-status page, parses it to find Apache servers that are in graceful shutdown, and then terminates all connections that are ESTABLISHED and connected on https. It can run in different modes: kill mode to actually terminate connections, testing mode to simulate the process, and verbose mode for detailed logging.
 ## Requirements: Python 3, psutil, requests, BeautifulSoup4
 ## License: Apache License 2.0
 
-## Usage: ./websocket-reaper.py -u <url> [-k] [-t] [-v]
+## Usage: ./websocket-reaper.py [-h] [-k|-t] [-v] -u <url>
 ## Options:
-## -u, --url <url>       URL of the server-status page
-## -k, --kill            Run in kill mode
-## -t, --testing         Run in testing mode (inplies -v)
-## -v, --verbose         Be verbose 
+## -h, --help               Show usage information and exit
+## -k, --kill               Run in kill mode
+## -t, --testing            Run in testing mode (inplies -v)
+## -u <url>, --url <url>    URL of the server-status page
+## -v, --verbose            Be verbose 
 ## Example: ./websocket-reaper.py -u http://localhost/server-status -t
 
 import logging, logging.handlers
