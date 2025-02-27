@@ -10,11 +10,12 @@
 
 ## Usage: ./websocket-reaper.py [-h] [-k|-t] [-v] -u <url>
 ## Options:
-## -h, --help               Show usage information and exit
-## -k, --kill               Run in kill mode
-## -t, --testing            Run in testing mode (inplies -v)
-## -u <url>, --url <url>    URL of the server-status page
-## -v, --verbose            Be verbose 
+## -d, --debug                          Run in debug/testing mode (inplies -v)
+## -h, --help                           Show usage information and exit
+## -k, --kill                           Run in kill mode
+## -t <timeout>, --timeout <timeout>    Timeout in seconds (default 300s) for connections to be considered stale
+## -u <url>, --url <url>                URL of the server-status page
+## -v, --verbose                        Be verbose 
 ## Example: ./websocket-reaper.py -u http://localhost/server-status -t
 
 import logging, logging.handlers
@@ -43,22 +44,26 @@ logging.basicConfig(level=logging.WARN, handlers=[console_handler, syslog_handle
 # Parse command line arguments
 parser = argparse.ArgumentParser(description='WebSocket Reaper')
 group = parser.add_mutually_exclusive_group()
+group.add_argument('-d', '--debug', action='store_true', help='Run in testing mode')
 group.add_argument('-k', '--kill', action='store_true', help='Run in kill mode')
-group.add_argument('-t', '--testing', action='store_true', help='Run in testing mode')
 # add required argument url
 parser.add_argument('-u', '--url', type=str, required=True, help='URL of the server-status page')
+parser.add_argument('-t', '--timeout', type=int, default=300, help='Timeout in seconds for connections to be considered stale')
 parser.add_argument('-v', '--verbose', action='store_true', help='Be verbose')
 args = parser.parse_args()
 
 # Define TESTING variable
-TESTMODE = args.testing
+TESTMODE = args.debug
 KILLMODE = args.kill
 VERBOSE = args.verbose
 STATUSURL = args.url
+threadTimeout = args.timeout
+
 TESTING = False
 if TESTMODE:
     TESTING = True
     VERBOSE = True
+    logging.getLogger().handlers=[console_handler]
     logging.debug("Running in TESTING mode")
 if KILLMODE:
     KILLPROCESS = True
@@ -69,28 +74,41 @@ if VERBOSE:
 
 def fetch_webpage_data(url):
     serverPIDs = []
+    serverStaleConnections = []
+    requests.packages.urllib3.disable_warnings(requests.packages.urllib3.exceptions.InsecureRequestWarning)
+    response = requests.get(url, verify=False)
+    if response.status_code != 200:
+        raise ConnectionError(f"Unexpected HTTP response code: {response.status_code}")
+    soup = BeautifulSoup(response.text, 'html.parser')
 
     try:
         if TESTING:
-            logging.debug("Getting a two first apache2 pids for testing")
-            processList = []
-            for process in psutil.process_iter(['pid', 'name']):
-                if process.info['name'] == 'apache2':
-                    processList.append(process.info['pid'])
-            # get last two pids
-            serverPIDs = processList[-2:]
+            for th in soup.find_all("th", text="accepting"):
+                serverTableHeaderRow = th.find_parent("tr")
+                serverTableRows = [serverTableHeaderRow.find_next_sibling("tr"), 
+                                   serverTableHeaderRow.find_next_sibling("tr").find_next_sibling("tr")]
+                for serverTableRow in serverTableRows:
+                    for serverPID in serverTableRow.find_all("td")[1]:
+                        serverPIDs.append(int(serverPID.text))
+            logging.debug(f"Getting a two first apache2 pids {serverPIDs} for testing")
+            for serverPID in serverPIDs:
+                logging.debug(f"Finding all threads under PID {serverPID} sending resposes to clients for longer than {threadTimeout} second(s)")
+                for td in soup.find_all("td", text=str(serverPID)):
+                    serverThreadTR = td.find_parent("tr")
+                    if int(serverThreadTR.find_all("td")[5].get_text(strip=True)) >= threadTimeout and serverThreadTR.find_all("td")[3].get_text(strip=True) == "_":
+                        serverStaleConnections = [serverPID, serverThreadTR.find_all("td")[11].get_text(strip=True)]
+                        logging.debug(f"PID {serverPID} currently sending reply to client {serverStaleConnections[1]}")
 
         else:
-            requests.packages.urllib3.disable_warnings(requests.packages.urllib3.exceptions.InsecureRequestWarning)
-            response = requests.get(url, verify=False)
-            if response.status_code != 200:
-                raise ConnectionError(f"Unexpected HTTP response code: {response.status_code}")
-            soup = BeautifulSoup(response.text, 'html.parser')
-    
-            # Find all td elements containing 'yes (old gen)'
             logging.debug("Parsing server-status page and getting apache pids that are exiting")
+            # find pids for all servers that are exiting
             for td in soup.find_all("td", text="yes (old gen)"):
                 serverPIDs.append(int(td.find_previous_sibling('td').get_text(strip=True)))
+            # find all tr elements with the text serverPIDs
+            for serverPID in serverPIDs:
+                for tr in soup.find_all("tr", text=serverPID):
+                    print(tr)
+                    #if re.search(rf'{serverPID}', tr.text):
                 
         return serverPIDs
     
