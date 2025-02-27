@@ -84,9 +84,6 @@ def get_eligible_threads(url):
     try:
         if TESTING:
             for th in soup.find_all("th", text="accepting"):
-#                serverTableHeaderRow = th.find_parent("tr")
-#                serverTableRows = [serverTableHeaderRow.find_next_sibling("tr"), 
-#                                   serverTableHeaderRow.find_next_sibling("tr").find_next_sibling("tr")]
                 serverTable = th.find_parent("table")
                 serverTableRows = serverTable.find_all("tr")[2:]
                 for serverTableRow in serverTableRows:
