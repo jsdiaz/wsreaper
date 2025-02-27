@@ -18,12 +18,12 @@
 ## -v, --verbose                        Be verbose 
 ## Example: ./websocket-reaper.py -u http://localhost/server-status -t
 
-import logging, logging.handlers
+import logging
+import logging.handlers
 from bs4 import BeautifulSoup
 import os
 import psutil
 import requests
-import re
 import subprocess
 import argparse
 
@@ -52,21 +52,18 @@ parser.add_argument('-t', '--timeout', type=int, default=300, help='Timeout in s
 parser.add_argument('-v', '--verbose', action='store_true', help='Be verbose')
 args = parser.parse_args()
 
-# Define TESTING variable
+# Define mode variables
 TESTMODE = args.debug
 KILLMODE = args.kill
 VERBOSE = args.verbose
 STATUSURL = args.url
 threadTimeout = args.timeout
 
-TESTING = False
 if TESTMODE:
-    TESTING = True
     VERBOSE = True
-    logging.getLogger().handlers=[console_handler]
+    logging.getLogger().handlers = [console_handler]
     logging.debug("Running in TESTING mode")
 if KILLMODE:
-    KILLPROCESS = True
     logging.debug("Running in KILL mode")
 if VERBOSE:
     logging.getLogger().setLevel(logging.DEBUG)
@@ -82,7 +79,7 @@ def get_eligible_threads(url):
     soup = BeautifulSoup(response.text, 'html.parser')
 
     try:
-        if TESTING:
+        if TESTMODE:
             for th in soup.find_all("th", text="accepting"):
                 serverTable = th.find_parent("table")
                 serverTableRows = serverTable.find_all("tr")[2:]
@@ -91,7 +88,7 @@ def get_eligible_threads(url):
                         serverPIDs.append(int(serverTableRow.find_all("td")[1].get_text(strip=True)))
             logging.debug(f"Getting all active apache2 pids {serverPIDs} for testing")
             for serverPID in serverPIDs:
-                logging.debug(f"Finding all threads under PID {serverPID} sending resposes to clients for longer than {threadTimeout}s")
+                logging.debug(f"Finding all threads under PID {serverPID} sending responses to clients for longer than {threadTimeout}s")
                 for td in soup.find_all("td", text=str(serverPID)):
                     serverThreadTR = td.find_parent("tr")
                     if int(serverThreadTR.find_all("td")[5].get_text(strip=True)) >= threadTimeout and serverThreadTR.find_all("td")[3].get_text(strip=True) in ["W"]:
@@ -106,37 +103,37 @@ def get_eligible_threads(url):
                 serverPIDs.append(int(td.find_previous_sibling('td').get_text(strip=True)))
             # find all threads under each pid that have been gracefully exiting for longer than threadTimeout seconds
             for serverPID in serverPIDs:
-                logging.debug(f"Finding all threads under PID {serverPID} sending resposes to clients for longer than {threadTimeout}s")
+                logging.debug(f"Finding all threads under PID {serverPID} sending responses to clients for longer than {threadTimeout}s")
                 for td in soup.find_all("td", text=str(serverPID)):
                     serverThreadTR = td.find_parent("tr")
                     if int(serverThreadTR.find_all("td")[5].get_text(strip=True)) >= threadTimeout and serverThreadTR.find_all("td")[3].get_text(strip=True) == "G":
                         serverStaleConnections.append([serverPID, serverThreadTR.find_all("td")[11].get_text(strip=True)])
                         logging.debug(f"PID {serverPID} has thread connected to {serverStaleConnections[1]} for longer than {threadTimeout}s")
 
-        if len(serverStaleConnections) == 0:
+        if not serverStaleConnections:
             logging.debug("No eligible connections found")
             return None
         else:
-            logging.debug(f"Found {len(serverStaleConnections)} eiligible connections")
+            logging.debug(f"Found {len(serverStaleConnections)} eligible connections")
             return serverStaleConnections
     
     except ConnectionError as e:
         logging.error(f"Failed to fetch webpage data: {str(e)}")
         return None
     except Exception as e:
-        logging.error(f"An error occured while parsing webpage data: {str(e)}")
+        logging.error(f"An error occurred while parsing webpage data: {str(e)}")
         return None
 
-def process_connection(serverPID,clientIP):
+def process_connection(serverPID, clientIP):
     try:
         # ensure valid process ID
         if not isinstance(serverPID, int) or serverPID <= 0:
             raise ValueError("Invalid Process ID")
 
         if not psutil.pid_exists(serverPID):
-            raise ProcessLookupError(f"a process with pid {serverPID} does not exist")
+            raise ProcessLookupError(f"A process with PID {serverPID} does not exist")
 
-        logging.debug(f"a process with pid {serverPID} exists")
+        logging.debug(f"A process with PID {serverPID} exists")
 
         p = psutil.Process(serverPID)
         for connection in p.connections():
@@ -148,7 +145,7 @@ def process_connection(serverPID,clientIP):
                     logging.debug(f"Terminating connection to {remote_addr}")
                     # kill the network connections via ss
                     try:
-                        ss_output = subprocess.run(
+                        subprocess.run(
                             ['/usr/bin/ss', '-K', 'dst', remote_addr],
                             capture_output=True, 
                             check=True,
@@ -156,7 +153,7 @@ def process_connection(serverPID,clientIP):
                         )
                         logging.debug(f"ss terminated connection to {remote_addr}")
                     except subprocess.CalledProcessError as e:
-                        logging.error(f"ss failed to terminate connection to {remote_addr}")     
+                        logging.error(f"ss failed to terminate connection to {remote_addr}: {str(e)}")
                     except Exception as e:
                         logging.error(f"Unexpected error while terminating connection to {remote_addr}: {str(e)}")
                 else:
@@ -185,13 +182,13 @@ def main():
         for serverClient in data:
             # Assuming matches are captured as list of process IDs and client IPs
             try:
-                ssResult = process_connection(serverClient[0],serverClient[1])
+                ssResult = process_connection(serverClient[0], serverClient[1])
                 if ssResult and KILLMODE:
                     logging.debug(f"Successfully terminated stale connections to PID {serverClient[0]}")
                 elif KILLMODE:
                     logging.error(f"Failed to terminate stale connections to PID {serverClient[0]}")
             except ValueError as e:
-                logging.error(f"Value error while processing PID {serverClient[0]} {str(e)}")
+                logging.error(f"Value error while processing PID {serverClient[0]}: {str(e)}")
             except ProcessLookupError as e:
                 logging.error(f"Process lookup error while processing PID {serverClient[0]}: {str(e)}")
             except subprocess.CalledProcessError as e:
@@ -202,7 +199,7 @@ def main():
     except ValueError as e:
         logging.debug(f"{e}: exiting")
     except ConnectionError as e:
-        logging.error("failed to fetch server-status")
+        logging.error("Failed to fetch server-status")
     except Exception as e:
         logging.error(f"Unexpected error: {str(e)}")
 
