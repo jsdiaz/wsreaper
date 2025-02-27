@@ -88,17 +88,16 @@ def get_eligible_threads(url):
                 serverTableRows = serverTable.find_all("tr")[2:]
                 for serverTableRow in serverTableRows:
                     if serverTableRow.find_all("td")[4].get_text(strip=True) == "yes":
-                        for serverPID in serverTableRow.find_all("td")[1]:
-                            serverPIDs.append(int(serverPID.text))
+                        serverPIDs.append(int(serverTableRow.find_all("td")[1].get_text(strip=True)))
             logging.debug(f"Getting all active apache2 pids {serverPIDs} for testing")
             for serverPID in serverPIDs:
-                logging.debug(f"Finding all threads under PID {serverPID} sending resposes to clients for longer than {threadTimeout} second(s)")
+                logging.debug(f"Finding all threads under PID {serverPID} sending resposes to clients for longer than {threadTimeout}s")
                 for td in soup.find_all("td", text=str(serverPID)):
                     serverThreadTR = td.find_parent("tr")
                     if int(serverThreadTR.find_all("td")[5].get_text(strip=True)) >= threadTimeout and serverThreadTR.find_all("td")[3].get_text(strip=True) in ["W"]:
                         threadClient = serverThreadTR.find_all("td")[11].get_text(strip=True)
                         serverStaleConnections.append([serverPID, threadClient])
-                        logging.debug(f"PID {serverPID} had been sending reply to client {threadClient} for longer than {threadTimeout}")
+                        logging.debug(f"PID {serverPID} had been sending reply to client {threadClient} for longer than {threadTimeout}s")
 
         else:
             logging.debug("Parsing server-status page and getting apache pids that are exiting")
@@ -107,12 +106,12 @@ def get_eligible_threads(url):
                 serverPIDs.append(int(td.find_previous_sibling('td').get_text(strip=True)))
             # find all threads under each pid that have been gracefully exiting for longer than threadTimeout seconds
             for serverPID in serverPIDs:
-                logging.debug(f"Finding all threads under PID {serverPID} sending resposes to clients for longer than {threadTimeout} second(s)")
+                logging.debug(f"Finding all threads under PID {serverPID} sending resposes to clients for longer than {threadTimeout}s")
                 for td in soup.find_all("td", text=str(serverPID)):
                     serverThreadTR = td.find_parent("tr")
                     if int(serverThreadTR.find_all("td")[5].get_text(strip=True)) >= threadTimeout and serverThreadTR.find_all("td")[3].get_text(strip=True) == "G":
                         serverStaleConnections.append([serverPID, serverThreadTR.find_all("td")[11].get_text(strip=True)])
-                        logging.debug(f"PID {serverPID} has thread connected to {serverStaleConnections[1]} for longer than {threadTimeout}")
+                        logging.debug(f"PID {serverPID} has thread connected to {serverStaleConnections[1]} for longer than {threadTimeout}s")
 
         if len(serverStaleConnections) == 0:
             logging.debug("No eligible connections found")
