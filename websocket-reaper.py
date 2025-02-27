@@ -44,7 +44,7 @@ logging.basicConfig(level=logging.WARN, handlers=[console_handler, syslog_handle
 # Parse command line arguments
 parser = argparse.ArgumentParser(description='WebSocket Reaper')
 group = parser.add_mutually_exclusive_group()
-group.add_argument('-d', '--debug', action='store_true', help='Run in testing mode')
+group.add_argument('-d', '--debug', action='store_true', help='Run in debug/testing mode')
 group.add_argument('-k', '--kill', action='store_true', help='Run in kill mode')
 # add required argument url
 parser.add_argument('-u', '--url', type=str, required=True, help='URL of the server-status page')
@@ -60,14 +60,15 @@ STATUSURL = args.url
 threadTimeout = args.timeout
 
 if TESTMODE:
-    VERBOSE = True
+    logging.getLogger().setLevel(logging.DEBUG)
     logging.getLogger().handlers = [console_handler]
-    logging.debug("Running in TESTING mode")
-if KILLMODE:
-    logging.debug("Running in KILL mode")
+    logging.debug("Running in DEBUG/TESTING mode")
+    logging.debug("Using all connections \"Sending Reply\" (W) from all active servers as test connection pool.\n Connections will only logged to stdout. No connections will be killed")
 if VERBOSE:
     logging.getLogger().setLevel(logging.DEBUG)
     logging.debug("Running in VERBOSE mode")
+if KILLMODE:
+    logging.debug("Running in KILL mode")
 
 def get_eligible_threads(url):
     serverPIDs = []
