@@ -31,30 +31,31 @@ The script fetches the server-status page, parses it to find Apache servers that
 In order for the script to be able to kill established connections, it will need elevated privileges, eg as root. Anything that you download and run with elevated privs on your machine should be throughly inspected. Please inspect this code prior to running it with elevated privs.
 
 * This script should be run as root.
-* Run the script in test mode (`-t`) and inspect output.
+* Run the script in test mode (`-d`) and inspect output.
 * Set up the script to run at the desired interval in cron.
 
 
 #### Usage
-./websocket-reaper.py -u <url> [-h] [-k|-t] [-v]
+./websocket-reaper.py -u <url> [-h] [-d|-k] [-v] [-t TIMEOUT]
 
 
 #### Options
--h, --help              Show usage information and exit  
--k, --kill              Run in kill mode  
--t, --testing           Run in testing mode (implies -v)  
--u <url>, --url <url>   URL of the server-status page  
--v, --verbose           Be verbose  
+-d, --debug                         Run in debug/testing mode (inplies -v)  
+-h, --help                          Show usage information and exit  
+-k, --kill                          Run in kill mode  
+-t <timeout>, --timeout <timeout>   Timeout in seconds (default 300) for connections to be considered stale  
+-u <url>, --url <url>               URL of the server-status page  
+-v, --verbose                       Be verbose  
 
 
 #### Example
 ```
-./websocket-reaper.py -u http://localhost/server-status -t
+./websocket-reaper.py -u http://localhost/server-status -d
 ```
 
 ## Help
 
-If you experience odd behavior, try running the script in testing mode (include -t).
+If you experience odd behavior, try running the script in testing mode (include `-d`).
 
 ## Authors
 
@@ -64,6 +65,10 @@ Contributors names and contact info
 
 ## Version History
 
+* 0.3
+    * Added timeout checking
+    * Added per client validation
+    * Improved debug mode
 * 0.2
     * Added command line options
     * Improved error handling

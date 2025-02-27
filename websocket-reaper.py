@@ -2,7 +2,7 @@
 
 ## websocket-reaper.py
 ## Author: J S Diaz
-## Version: 0.2
+## Version: 0.3
 ## Date: 2025-02-26
 ## Description: This script is designed to kill stale WebSocket connections on an Apache server. The script fetches the server-status page, parses it to find Apache servers that are in graceful shutdown, and then terminates all connections that are ESTABLISHED and connected on https. It can run in different modes: kill mode to actually terminate connections, testing mode to simulate the process, and verbose mode for detailed logging.
 ## Requirements: Python 3, psutil, requests, BeautifulSoup4
@@ -72,7 +72,7 @@ if VERBOSE:
     logging.getLogger().setLevel(logging.DEBUG)
     logging.debug("Running in VERBOSE mode")
 
-def fetch_webpage_data(url):
+def get_eligible_threads(url):
     serverPIDs = []
     serverStaleConnections = []
     requests.packages.urllib3.disable_warnings(requests.packages.urllib3.exceptions.InsecureRequestWarning)
@@ -84,33 +84,45 @@ def fetch_webpage_data(url):
     try:
         if TESTING:
             for th in soup.find_all("th", text="accepting"):
-                serverTableHeaderRow = th.find_parent("tr")
-                serverTableRows = [serverTableHeaderRow.find_next_sibling("tr"), 
-                                   serverTableHeaderRow.find_next_sibling("tr").find_next_sibling("tr")]
+#                serverTableHeaderRow = th.find_parent("tr")
+#                serverTableRows = [serverTableHeaderRow.find_next_sibling("tr"), 
+#                                   serverTableHeaderRow.find_next_sibling("tr").find_next_sibling("tr")]
+                serverTable = th.find_parent("table")
+                serverTableRows = serverTable.find_all("tr")[2:]
                 for serverTableRow in serverTableRows:
-                    for serverPID in serverTableRow.find_all("td")[1]:
-                        serverPIDs.append(int(serverPID.text))
-            logging.debug(f"Getting a two first apache2 pids {serverPIDs} for testing")
+                    if serverTableRow.find_all("td")[4].get_text(strip=True) == "yes":
+                        for serverPID in serverTableRow.find_all("td")[1]:
+                            serverPIDs.append(int(serverPID.text))
+            logging.debug(f"Getting all active apache2 pids {serverPIDs} for testing")
             for serverPID in serverPIDs:
                 logging.debug(f"Finding all threads under PID {serverPID} sending resposes to clients for longer than {threadTimeout} second(s)")
                 for td in soup.find_all("td", text=str(serverPID)):
                     serverThreadTR = td.find_parent("tr")
-                    if int(serverThreadTR.find_all("td")[5].get_text(strip=True)) >= threadTimeout and serverThreadTR.find_all("td")[3].get_text(strip=True) == "_":
-                        serverStaleConnections = [serverPID, serverThreadTR.find_all("td")[11].get_text(strip=True)]
-                        logging.debug(f"PID {serverPID} currently sending reply to client {serverStaleConnections[1]}")
+                    if int(serverThreadTR.find_all("td")[5].get_text(strip=True)) >= threadTimeout and serverThreadTR.find_all("td")[3].get_text(strip=True) in ["W"]:
+                        threadClient = serverThreadTR.find_all("td")[11].get_text(strip=True)
+                        serverStaleConnections.append([serverPID, threadClient])
+                        logging.debug(f"PID {serverPID} had been sending reply to client {threadClient} for longer than {threadTimeout}")
 
         else:
             logging.debug("Parsing server-status page and getting apache pids that are exiting")
             # find pids for all servers that are exiting
             for td in soup.find_all("td", text="yes (old gen)"):
                 serverPIDs.append(int(td.find_previous_sibling('td').get_text(strip=True)))
-            # find all tr elements with the text serverPIDs
+            # find all threads under each pid that have been gracefully exiting for longer than threadTimeout seconds
             for serverPID in serverPIDs:
-                for tr in soup.find_all("tr", text=serverPID):
-                    print(tr)
-                    #if re.search(rf'{serverPID}', tr.text):
-                
-        return serverPIDs
+                logging.debug(f"Finding all threads under PID {serverPID} sending resposes to clients for longer than {threadTimeout} second(s)")
+                for td in soup.find_all("td", text=str(serverPID)):
+                    serverThreadTR = td.find_parent("tr")
+                    if int(serverThreadTR.find_all("td")[5].get_text(strip=True)) >= threadTimeout and serverThreadTR.find_all("td")[3].get_text(strip=True) == "G":
+                        serverStaleConnections.append([serverPID, serverThreadTR.find_all("td")[11].get_text(strip=True)])
+                        logging.debug(f"PID {serverPID} has thread connected to {serverStaleConnections[1]} for longer than {threadTimeout}")
+
+        if len(serverStaleConnections) == 0:
+            logging.debug("No eligible connections found")
+            return None
+        else:
+            logging.debug(f"Found {len(serverStaleConnections)} eiligible connections")
+            return serverStaleConnections
     
     except ConnectionError as e:
         logging.error(f"Failed to fetch webpage data: {str(e)}")
@@ -119,7 +131,7 @@ def fetch_webpage_data(url):
         logging.error(f"An error occured while parsing webpage data: {str(e)}")
         return None
 
-def process_connection(serverPID):
+def process_connection(serverPID,clientIP):
     try:
         # ensure valid process ID
         if not isinstance(serverPID, int) or serverPID <= 0:
@@ -132,7 +144,8 @@ def process_connection(serverPID):
 
         p = psutil.Process(serverPID)
         for connection in p.connections():
-            if connection.status == psutil.CONN_ESTABLISHED and connection.laddr.port == 443:
+            if connection.status == psutil.CONN_ESTABLISHED and connection.laddr.port == 443 and connection.raddr.ip == "::ffff:" + clientIP:
+                logging.debug(f"Found ESTABLISHED connection on port 443 for client {clientIP}")
                 remote_addr = f'[{connection.raddr.ip}]:{connection.raddr.port}'
 
                 if KILLMODE:
@@ -152,10 +165,7 @@ def process_connection(serverPID):
                         logging.error(f"Unexpected error while terminating connection to {remote_addr}: {str(e)}")
                 else:
                     logging.debug(f"Would terminate connection to {remote_addr}")
-            else:
-                logging.debug(f"PID {serverPID} has no ESTABLISHED connections on port 443")
-                return False
-
+   
         return True
         
     except ValueError as e:
@@ -170,28 +180,28 @@ def process_connection(serverPID):
 
 def main():
     try:
-        data = fetch_webpage_data(STATUSURL)
+        data = get_eligible_threads(STATUSURL)
         if not data:
             raise ValueError("No matching PIDs found")
 
-        logging.debug(f"Found matching PIDS: {data}")
+        logging.debug(f"Found matching threads: {data}")
         
-        for serverPID in data:
-            # Assuming matches are captured as process IDs
+        for serverClient in data:
+            # Assuming matches are captured as list of process IDs and client IPs
             try:
-                ssResult = process_connection(serverPID)
+                ssResult = process_connection(serverClient[0],serverClient[1])
                 if ssResult and KILLMODE:
-                    logging.debug(f"Successfully terminated stale connections to PID {serverPID}")
+                    logging.debug(f"Successfully terminated stale connections to PID {serverClient[0]}")
                 elif KILLMODE:
-                    logging.error(f"Failed to terminate stale connections to PID {serverPID}")
+                    logging.error(f"Failed to terminate stale connections to PID {serverClient[0]}")
             except ValueError as e:
-                logging.error(f"Value error while processing PID {serverPID}: {str(e)}")
+                logging.error(f"Value error while processing PID {serverClient[0]} {str(e)}")
             except ProcessLookupError as e:
-                logging.error(f"Process lookup error while processing PID {serverPID}: {str(e)}")
+                logging.error(f"Process lookup error while processing PID {serverClient[0]}: {str(e)}")
             except subprocess.CalledProcessError as e:
-                logging.error(f"Subprocess error while processing PID {serverPID}: {str(e)}")
+                logging.error(f"Subprocess error while processing PID {serverClient[0]}: {str(e)}")
             except Exception as e:
-                logging.error(f"Unexpected error while processing PID {serverPID}: {str(e)}")
+                logging.error(f"Unexpected error while processing PID {serverClient[0]}: {str(e)}")
                 
     except ValueError as e:
         logging.debug(f"{e}: exiting")
