@@ -63,7 +63,7 @@ if TESTMODE:
     logging.getLogger().setLevel(logging.DEBUG)
     logging.getLogger().handlers = [console_handler]
     logging.debug("Running in DEBUG/TESTING mode")
-    logging.debug("Using all connections \"Sending Reply\" (W) from all active servers as test connection pool.\n Connections will only logged to stdout. No connections will be killed")
+    logging.debug("Using all connections \"Sending Reply\" (W) from all active servers as test connection pool. Connections will only logged to stdout. No connections will be killed.")
 if VERBOSE:
     logging.getLogger().setLevel(logging.DEBUG)
     logging.debug("Running in VERBOSE mode")
@@ -81,35 +81,36 @@ def get_eligible_threads(url):
 
     try:
         if TESTMODE:
+            clientSearchState = ["W"]
             for th in soup.find_all("th", text="accepting"):
                 serverTable = th.find_parent("table")
                 serverTableRows = serverTable.find_all("tr")[2:]
                 for serverTableRow in serverTableRows:
                     if serverTableRow.find_all("td")[4].get_text(strip=True) == "yes":
                         serverPIDs.append(int(serverTableRow.find_all("td")[1].get_text(strip=True)))
-            logging.debug(f"Getting all active apache2 pids {serverPIDs} for testing")
-            for serverPID in serverPIDs:
-                logging.debug(f"Finding all threads under PID {serverPID} sending responses to clients for longer than {threadTimeout}s")
-                for td in soup.find_all("td", text=str(serverPID)):
-                    serverThreadTR = td.find_parent("tr")
-                    if int(serverThreadTR.find_all("td")[5].get_text(strip=True)) >= threadTimeout and serverThreadTR.find_all("td")[3].get_text(strip=True) in ["W"]:
-                        threadClient = serverThreadTR.find_all("td")[11].get_text(strip=True)
-                        serverStaleConnections.append([serverPID, threadClient])
-                        logging.debug(f"PID {serverPID} had been sending reply to client {threadClient} for longer than {threadTimeout}s")
+            logging.debug(f"Selected all active apache2 PIDs {serverPIDs} for testing")
 
         else:
-            logging.debug("Parsing server-status page and getting apache pids that are exiting")
+            clientSearchState = ["G"]
+            logging.debug("Parsing server-status page and getting apache PIDs that are exiting")
             # find pids for all servers that are exiting
             for td in soup.find_all("td", text="yes (old gen)"):
                 serverPIDs.append(int(td.find_previous_sibling('td').get_text(strip=True)))
-            # find all threads under each pid that have been gracefully exiting for longer than threadTimeout seconds
-            for serverPID in serverPIDs:
-                logging.debug(f"Finding all threads under PID {serverPID} sending responses to clients for longer than {threadTimeout}s")
-                for td in soup.find_all("td", text=str(serverPID)):
-                    serverThreadTR = td.find_parent("tr")
-                    if int(serverThreadTR.find_all("td")[5].get_text(strip=True)) >= threadTimeout and serverThreadTR.find_all("td")[3].get_text(strip=True) == "G":
-                        serverStaleConnections.append([serverPID, serverThreadTR.find_all("td")[11].get_text(strip=True)])
-                        logging.debug(f"PID {serverPID} has thread connected to {serverStaleConnections[1]} for longer than {threadTimeout}s")
+            if serverPIDs:
+                logging.debug(f"Selected gracefully exiting apache2 PIDs {serverPIDs}")
+            else:
+                return None
+
+        # find all threads under each pid that have been connected longer than threadTimeout seconds
+        for serverPID in serverPIDs:
+            logging.debug(f"Finding all threads under PID {serverPID} in state(s) {clientSearchState} connected to clients for >{threadTimeout}s")
+            for td in soup.find_all("td", text=str(serverPID)):
+                serverThreadTR = td.find_parent("tr")
+                threadSS = int(serverThreadTR.find_all("td")[5].get_text(strip=True))
+                if threadSS >= threadTimeout and serverThreadTR.find_all("td")[3].get_text(strip=True) in clientSearchState:
+                    threadClient = serverThreadTR.find_all("td")[11].get_text(strip=True)
+                    serverStaleConnections.append([serverPID, threadClient, threadSS])
+                    logging.debug(f"PID {serverPID} has thread connected to {threadClient} for >{threadTimeout}s ({threadSS}s)")
 
         if not serverStaleConnections:
             logging.debug("No eligible connections found")
@@ -159,7 +160,7 @@ def process_connection(serverPID, clientIP):
                         logging.error(f"Unexpected error while terminating connection to {remote_addr}: {str(e)}")
                 else:
                     logging.debug(f"Would terminate connection to {remote_addr}")
-   
+
         return True
         
     except ValueError as e:
