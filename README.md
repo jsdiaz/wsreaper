@@ -6,7 +6,7 @@ Python3 script that kills established socket connections in gracefully shutting 
 
 This script is designed to kill stale WebSocket connections on an Apache 2.4 server functioning as a reverse proxy. It is intended as a brute-force workaround to Apache bug 65180 (https://bz.apache.org/bugzilla/show_bug.cgi?id=65180). The script is intended to run at intervals in cron. It forcefully kills connections that do not exit, avoiding server exhaustion once servers with WebSocket connections, that are shutting down, fill all available server slots. This issue is fixed in Apache 2.5 by adding a ProxyWebsocketIdleTimeout directive that sets the maximum amount of time to wait for data on the WebSocket tunnel (https://httpd.apache.org/docs/trunk/mod/mod_proxy_wstunnel.html#proxywebsocketidletimeout).
 
-The script fetches the server-status page, parses it to find Apache servers that are in graceful shutdown. It then terminates all connections that are ESTABLISHED and connected on https. It can run in different modes: kill mode to actually terminate connections, testing mode to simulate the process, and verbose mode for detailed logging.
+The script fetches the server-status page, parses it to find Apache servers that are in graceful shutdown. It then terminates all connections that are ESTABLISHED and connected on https. It can run in different modes: kill mode to actually terminate connections, debug/testing mode to simulate the process, and verbose mode for detailed logging.
 
 ## Getting Started
 
@@ -22,7 +22,7 @@ The script fetches the server-status page, parses it to find Apache servers that
 
 * Download the script from the github repo.
 * Install Python3 and required Python libraries (see dependencies).
-* Make the script executable (`chmod 750 websocket-reaper.py`)
+* Ensure the script is executable (`chmod 750 websocket-reaper.py`)
 * Change the ownership to root (`chown root:root websocket-reaper.py`)
 * Copy the script into /usr/local/sbin (or your preferred location where the script will be run from).
 
@@ -31,21 +31,21 @@ The script fetches the server-status page, parses it to find Apache servers that
 In order for the script to be able to kill established connections, it will need elevated privileges, eg as root. Anything that you download and run with elevated privs on your machine should be throughly inspected. Please inspect this code prior to running it with elevated privs.
 
 * This script should be run as root.
-* Run the script in test mode (`-d`) and inspect output.
+* Run the script in debug/testing mode (`-d`) and inspect output.
 * Set up the script to run at the desired interval in cron.
 
 
 #### Usage
-./websocket-reaper.py -u <url> [-h] [-d|-k] [-v] [-t TIMEOUT]
+./websocket-reaper.py -u &lt;url&gt; [-h] [-d|-k] [-v] [-t TIMEOUT]
 
 
 #### Options
--d, --debug                         Run in debug/testing mode (inplies -v)  
--h, --help                          Show usage information and exit  
--k, --kill                          Run in kill mode  
--t <timeout>, --timeout <timeout>   Timeout in seconds (default 300) for connections to be considered stale  
--u <url>, --url <url>               URL of the server-status page  
--v, --verbose                       Be verbose  
+-d, --debug                                          Run in debug/testing mode (inplies -v)  
+-h, --help                                              Show usage information and exit  
+-k, --kill                                                 Run in kill mode  
+-t &lt;timeout&gt;, --timeout &lt;timeout&gt;   Timeout in seconds (default 300) for connections to be considered stale  
+-u &lt;url&gt;, --url &lt;url&gt;                             URL of the server-status page  
+-v, --verbose                                        Be verbose  
 
 
 #### Example
@@ -55,7 +55,7 @@ In order for the script to be able to kill established connections, it will need
 
 ## Help
 
-If you experience odd behavior, try running the script in testing mode (include `-d`).
+If you experience odd behavior, try running the script in debug/testing mode (include `-d`).
 
 ## Authors
 
