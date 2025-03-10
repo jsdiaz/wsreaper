@@ -94,8 +94,12 @@ def get_eligible_threads(url):
             clientSearchState = ["G"]
             logging.debug("Parsing server-status page and getting apache PIDs that are exiting")
             # find pids for all servers that are exiting
-            for td in soup.find_all("td", text="yes (old gen)"):
-                serverPIDs.append(int(td.find_previous_sibling('td').get_text(strip=True)))
+            for th in soup.find_all("th", text="accepting"):
+                serverTable = th.find_parent("table")
+                serverTableRows = serverTable.find_all("tr")[2:]
+                for serverTableRow in serverTableRows:
+                    if serverTableRow.find_all("td")[4].get_text(strip=True) == "no":
+                        serverPIDs.append(int(serverTableRow.find_all("td")[1].get_text(strip=True)))
             if serverPIDs:
                 logging.debug(f"Selected gracefully exiting apache2 PIDs {serverPIDs}")
             else:
